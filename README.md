@@ -23,12 +23,23 @@ A single-command tool that locks down a fresh Linux server — passphrase-protec
 
 ```bash
 # Clone or copy the script to the server, then:
-chmod +x harden.sh
+chmod +x harden.sh deploy.sh generate.sh
 sudo bash harden.sh            # hardens for the current sudo user
 sudo bash harden.sh someuser   # hardens for a specific user
 ```
 
 The script will ask for confirmation before making any changes.
+
+## Generating a new key
+
+Use `generate.sh` to create a fresh passphrase-protected key locally:
+
+```bash
+bash generate.sh          # generates ~/.ssh/hardened
+bash generate.sh mykey    # generates ~/.ssh/mykey
+```
+
+It will prompt for a passphrase, then you can deploy with `deploy.sh`.
 
 ## After running
 
@@ -54,7 +65,19 @@ bash deploy.sh user@server-ip
 
 # Copy your key AND harden the server (all in one)
 bash deploy.sh user@server-ip 22 --harden
+
+# Replace ALL old keys on a server with yours (wipes authorized_keys)
+bash deploy.sh user@server-ip 2223 --replace
+
+# Replace old keys AND harden
+bash deploy.sh user@server-ip 22 --replace --harden
 ```
+
+| Flag | What it does |
+|------|--------------|
+| *(none)* | Appends your key to `authorized_keys` (existing keys stay) |
+| `--replace` | Wipes `authorized_keys` and adds only your key |
+| `--harden` | Copies `harden.sh` to the server and runs it |
 
 The `--harden` flag copies `harden.sh` to the remote server, runs it, and the server ends up on port 2223 with pubkey-only auth — using your existing key. No need to generate a new key pair each time.
 
