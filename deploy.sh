@@ -40,14 +40,24 @@ if [[ -z "${1:-}" ]]; then
 fi
 
 TARGET="$1"
-PORT="${2:-22}"
+shift
+
+# Parse remaining arguments — detect port vs flags
+PORT=22
 DO_HARDEN=false
 DO_REPLACE=false
-shift 2 2>/dev/null || shift $# # consume target + port
 for arg in "$@"; do
     case "$arg" in
         --harden)  DO_HARDEN=true ;;
         --replace) DO_REPLACE=true ;;
+        *)
+            if [[ "$arg" =~ ^[0-9]+$ ]]; then
+                PORT="$arg"
+            else
+                echo -e "${RED}[ERR]${NC}  Unknown argument: $arg"
+                exit 1
+            fi
+            ;;
     esac
 done
 
@@ -90,7 +100,7 @@ chmod 700 "$SSH_DIR" 2>/dev/null || sudo chmod 700 "$SSH_DIR"
 
 if $DO_REPLACE; then
     echo -e "${YELLOW}[WARN]${NC}  Replacing ALL authorized_keys on ${TARGET} with your key ..."
-    ssh -t -p "$PORT" "$TARGET" "
+    if ssh -t -p "$PORT" "$TARGET" "
         ${REMOTE_SETUP}
         echo '${PUB_KEY}' > \"\$AUTH_FILE\" 2>/dev/null || {
             echo '${PUB_KEY}' | sudo tee \"\$AUTH_FILE\" > /dev/null
@@ -98,8 +108,7 @@ if $DO_REPLACE; then
         sudo chown \"\$USER:\$USER\" \"\$AUTH_FILE\" 2>/dev/null || true
         chmod 600 \"\$AUTH_FILE\" 2>/dev/null || sudo chmod 600 \"\$AUTH_FILE\"
         echo 'Old keys removed. Your key is now the only one.'
-    "
-    if [[ $? -eq 0 ]]; then
+    "; then
         echo -e "${GREEN}[ OK ]${NC}  Replaced authorized_keys on ${TARGET}"
     else
         echo -e "${RED}[ERR]${NC}  Failed to replace keys on ${TARGET}"
@@ -107,7 +116,7 @@ if $DO_REPLACE; then
     fi
 else
     echo -e "${CYAN}[INFO]${NC}  Adding public key to ${TARGET}:~/.ssh/authorized_keys ..."
-    ssh -t -p "$PORT" "$TARGET" "
+    if ssh -t -p "$PORT" "$TARGET" "
         ${REMOTE_SETUP}
         if grep -qF '${PUB_KEY}' \"\$AUTH_FILE\" 2>/dev/null; then
             echo 'Key already present — skipping.'
@@ -119,8 +128,7 @@ else
             chmod 600 \"\$AUTH_FILE\" 2>/dev/null || sudo chmod 600 \"\$AUTH_FILE\"
             echo 'Key added.'
         fi
-    "
-    if [[ $? -eq 0 ]]; then
+    "; then
         echo -e "${GREEN}[ OK ]${NC}  Public key deployed to ${TARGET}"
     else
         echo -e "${RED}[ERR]${NC}  Failed to deploy key to ${TARGET}"

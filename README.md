@@ -8,7 +8,7 @@ Three scripts, two workflows. Pick what you need.
 |--------|---------------|
 | `generate.sh` | Generate a passphrase-protected Ed25519 key pair on your local machine |
 | `deploy.sh` | Push your key to remote servers — optionally replace old keys, optionally harden |
-| `harden.sh` | Full lockdown — sshd_config, UFW firewall, pubkey-only auth, port 2223 |
+| `harden.sh` | Full lockdown — sshd, firewall, auto-updates, fail2ban, sysctl, shared memory |
 
 ## Quick start
 
@@ -65,7 +65,14 @@ The script will:
 3. Add the public key to `authorized_keys`
 4. Write a hardened `sshd_config` (pubkey-only, port 2223, root disabled, modern ciphers)
 5. Install UFW and lock the firewall down to port 2223 only
-6. Print a one-liner to copy your private key to your local machine
+6. Enable automatic security updates (unattended-upgrades / dnf-automatic / yum-cron)
+7. Install and configure fail2ban (bans IPs after 3 failed SSH attempts for 24h)
+8. Apply kernel/network hardening via sysctl (SYN cookies, anti-spoofing, no redirects)
+9. Harden shared memory (`/run/shm` mounted with `noexec,nosuid,nodev`)
+10. Install rkhunter rootkit scanner with daily cron job and baseline snapshot
+11. Install AIDE file integrity monitor with daily cron job and baseline snapshot
+12. Set up a dynamic MOTD security dashboard (shown on every SSH login)
+13. Print a one-liner to copy your private key to your local machine
 
 > ⚠️ **Do NOT close your SSH session** until you verify access from a second terminal.
 
@@ -119,6 +126,13 @@ bash deploy.sh user@server-ip [port] [--replace] [--harden]
 | Ciphers | `chacha20-poly1305`, `aes256-gcm`, `aes128-gcm` |
 | MACs | `hmac-sha2-512-etm`, `hmac-sha2-256-etm` |
 | Firewall (UFW) | Deny all in/out, allow `2223/tcp` + DNS/HTTP/HTTPS/NTP outbound |
+| Auto-updates | Security-only (unattended-upgrades / dnf-automatic / yum-cron) |
+| fail2ban | SSH jail — 3 failed attempts = 24h ban |
+| Sysctl | SYN cookies, anti-spoofing, no ICMP redirects, no source routing |
+| Shared memory | `/run/shm` mounted `noexec,nosuid,nodev` |
+| rkhunter | Rootkit scanner with daily cron, baseline snapshot |
+| AIDE | File integrity monitor with daily cron, baseline snapshot |
+| Login MOTD | Dynamic security dashboard (services, bans, logins, scan results) |
 
 ## Requirements
 
@@ -147,4 +161,18 @@ To revert firewall:
 sudo ufw reset
 sudo ufw default allow incoming
 sudo ufw enable
+```
+
+To revert sysctl hardening:
+
+```bash
+sudo rm /etc/sysctl.d/99-hardening.conf
+sudo sysctl --system
+```
+
+To revert shared memory:
+
+```bash
+# Remove the tmpfs line added by harden.sh from /etc/fstab
+sudo nano /etc/fstab
 ```
