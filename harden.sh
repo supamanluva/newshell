@@ -23,28 +23,21 @@
 
 set -euo pipefail
 
-# ─── colours ────────────────────────────────────────────────────────────────────
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Colour
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/firewall.sh
+source "${SCRIPT_DIR}/lib/firewall.sh"
+# shellcheck source=lib/updates.sh
+source "${SCRIPT_DIR}/lib/updates.sh"
+# shellcheck source=lib/fail2ban.sh
+source "${SCRIPT_DIR}/lib/fail2ban.sh"
+# shellcheck source=lib/shm.sh
+source "${SCRIPT_DIR}/lib/shm.sh"
 
 SSH_PORT=2223
 SSHD_CONFIG="/etc/ssh/sshd_config"
 SSHD_CONFIG_BACKUP="/etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)"
-
-# ─── helpers ────────────────────────────────────────────────────────────────────
-
-log_info()  { echo -e "${CYAN}[INFO]${NC}  $*"; }
-log_ok()    { echo -e "${GREEN}[ OK ]${NC}  $*"; }
-log_warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-log_err()   { echo -e "${RED}[ERR ]${NC}  $*"; }
-
-bail() {
-    log_err "$*"
-    exit 1
-}
 
 # ─── pre-flight checks ─────────────────────────────────────────────────────────
 
@@ -256,147 +249,6 @@ EOF
     log_ok "SSHD configured and restarted on port ${SSH_PORT}."
 }
 
-# ─── step 3: install & configure UFW ───────────────────────────────────────────
-
-configure_firewall() {
-    log_info "──── Configuring Firewall (UFW) ────"
-
-    # Install UFW if missing
-    if ! command -v ufw &>/dev/null; then
-        log_info "Installing UFW..."
-        if command -v apt-get &>/dev/null; then
-            apt-get update -qq && apt-get install -y -qq ufw
-        elif command -v dnf &>/dev/null; then
-            dnf install -y -q ufw
-        elif command -v yum &>/dev/null; then
-            yum install -y -q ufw
-        elif command -v pacman &>/dev/null; then
-            pacman -Sy --noconfirm ufw
-        else
-            bail "No supported package manager found — install UFW manually."
-        fi
-        log_ok "UFW installed."
-    fi
-
-    # Reset to defaults (non-interactive)
-    echo "y" | ufw reset
-
-    # Default policies: deny everything
-    ufw default deny incoming
-    ufw default deny outgoing
-
-    # Allow outbound essentials (DNS, HTTP/S for updates, NTP)
-    ufw allow out 53        # DNS
-    ufw allow out 80/tcp    # HTTP (package updates)
-    ufw allow out 443/tcp   # HTTPS
-    ufw allow out 123/udp   # NTP
-
-    # Allow the SSH port
-    ufw allow in "${SSH_PORT}/tcp" comment "SSH (hardened)"
-    ufw allow out "${SSH_PORT}/tcp" comment "SSH out"
-
-    # Enable UFW
-    echo "y" | ufw enable
-
-    log_ok "UFW active — only port ${SSH_PORT}/tcp (SSH) is open for incoming."
-    ufw status verbose
-}
-
-# ─── step 4: automatic security updates ─────────────────────────────────────────
-
-configure_auto_updates() {
-    log_info "──── Configuring Automatic Security Updates ────"
-
-    if command -v apt-get &>/dev/null; then
-        # Debian/Ubuntu: unattended-upgrades
-        if ! dpkg -l unattended-upgrades &>/dev/null; then
-            apt-get update -qq && apt-get install -y -qq unattended-upgrades
-        fi
-
-        # Enable automatic security updates
-        cat > /etc/apt/apt.conf.d/20auto-upgrades <<'APTEOF'
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-APT::Periodic::AutocleanInterval "7";
-APTEOF
-
-        # Ensure only security updates are auto-installed (default)
-        if [[ -f /etc/apt/apt.conf.d/50unattended-upgrades ]]; then
-            log_ok "unattended-upgrades installed and enabled (security updates only)."
-        else
-            log_warn "unattended-upgrades config not found — defaults will apply."
-        fi
-
-        # Enable and start the timer
-        systemctl enable --now apt-daily.timer 2>/dev/null || true
-        systemctl enable --now apt-daily-upgrade.timer 2>/dev/null || true
-
-        log_ok "Automatic security updates enabled (apt)."  
-    elif command -v dnf &>/dev/null; then
-        # Fedora/RHEL 8+: dnf-automatic
-        dnf install -y -q dnf-automatic
-        # Configure for security updates only, auto-apply
-        sed -i 's/^apply_updates.*/apply_updates = yes/' /etc/dnf/automatic.conf 2>/dev/null || true
-        sed -i 's/^upgrade_type.*/upgrade_type = security/' /etc/dnf/automatic.conf 2>/dev/null || true
-        systemctl enable --now dnf-automatic.timer
-        log_ok "Automatic security updates enabled (dnf-automatic)."
-    elif command -v yum &>/dev/null; then
-        # CentOS 7: yum-cron
-        yum install -y -q yum-cron
-        sed -i 's/^update_cmd.*/update_cmd = security/' /etc/yum/yum-cron.conf 2>/dev/null || true
-        sed -i 's/^apply_updates.*/apply_updates = yes/' /etc/yum/yum-cron.conf 2>/dev/null || true
-        systemctl enable --now yum-cron
-        log_ok "Automatic security updates enabled (yum-cron)."
-    else
-        log_warn "No supported package manager for auto-updates — configure manually."
-    fi
-}
-
-# ─── step 5: fail2ban ───────────────────────────────────────────────────────────
-
-configure_fail2ban() {
-    log_info "──── Configuring fail2ban ────"
-
-    # Install fail2ban
-    if ! command -v fail2ban-client &>/dev/null; then
-        log_info "Installing fail2ban..."
-        if command -v apt-get &>/dev/null; then
-            apt-get update -qq && apt-get install -y -qq fail2ban
-        elif command -v dnf &>/dev/null; then
-            dnf install -y -q fail2ban
-        elif command -v yum &>/dev/null; then
-            yum install -y -q fail2ban
-        elif command -v pacman &>/dev/null; then
-            pacman -Sy --noconfirm fail2ban
-        else
-            log_warn "Cannot install fail2ban — no supported package manager."
-            return
-        fi
-        log_ok "fail2ban installed."
-    fi
-
-    # Write a local jail config (overrides without touching the default)
-    cat > /etc/fail2ban/jail.local <<JAILEOF
-[DEFAULT]
-bantime  = 1h
-findtime = 10m
-maxretry = 5
-
-[sshd]
-enabled  = true
-port     = ${SSH_PORT}
-logpath  = %(sshd_log)s
-backend  = %(sshd_backend)s
-maxretry = 3
-bantime  = 24h
-JAILEOF
-
-    systemctl enable --now fail2ban
-    systemctl restart fail2ban
-
-    log_ok "fail2ban active — SSH brute-force protection on port ${SSH_PORT}."
-}
-
 # ─── step 6: kernel & network hardening (sysctl) ───────────────────────────────
 
 configure_sysctl() {
@@ -451,40 +303,6 @@ SYSEOF
     sysctl --system > /dev/null 2>&1
 
     log_ok "Kernel/network hardening applied via ${SYSCTL_CONF}."
-}
-
-# ─── step 7: shared memory hardening ───────────────────────────────────────────
-
-harden_shared_memory() {
-    log_info "──── Hardening Shared Memory ────"
-
-    FSTAB="/etc/fstab"
-    SHM_ENTRY="tmpfs /run/shm tmpfs defaults,noexec,nosuid,nodev 0 0"
-
-    # Check if /run/shm or /dev/shm is already hardened
-    if grep -qE '^tmpfs\s+/run/shm.*noexec' "$FSTAB" 2>/dev/null; then
-        log_warn "/run/shm already hardened in fstab — skipping."
-        return
-    fi
-    if grep -qE '^tmpfs\s+/dev/shm.*noexec' "$FSTAB" 2>/dev/null; then
-        log_warn "/dev/shm already hardened in fstab — skipping."
-        return
-    fi
-
-    # Add hardened mount entry
-    echo "" >> "$FSTAB"
-    echo "# Shared memory hardening (added by harden.sh)" >> "$FSTAB"
-    echo "$SHM_ENTRY" >> "$FSTAB"
-
-    # Remount immediately
-    if mountpoint -q /run/shm 2>/dev/null; then
-        mount -o remount,noexec,nosuid,nodev /run/shm
-    elif mountpoint -q /dev/shm 2>/dev/null; then
-        # Some systems use /dev/shm instead — harden that too
-        mount -o remount,noexec,nosuid,nodev /dev/shm
-    fi
-
-    log_ok "Shared memory hardened (noexec,nosuid,nodev)."
 }
 
 # ─── step 8: rkhunter ──────────────────────────────────────────────────────────
