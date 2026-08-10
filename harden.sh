@@ -46,6 +46,8 @@ source "${SCRIPT_DIR}/lib/rkhunter.sh"
 source "${SCRIPT_DIR}/lib/aide.sh"
 # shellcheck source=lib/motd.sh
 source "${SCRIPT_DIR}/lib/motd.sh"
+# shellcheck source=lib/auditd.sh
+source "${SCRIPT_DIR}/lib/auditd.sh"
 
 SSH_PORT=2223
 SSHD_CONFIG="/etc/ssh/sshd_config"
@@ -206,6 +208,8 @@ main() {
     configure_sysctl
     echo ""
     harden_shared_memory
+    echo ""
+    configure_auditd
     echo ""
     configure_rkhunter
     echo ""
