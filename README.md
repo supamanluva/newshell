@@ -13,6 +13,22 @@ The baseline every new Linux VM gets: hardened sshd with CA-signed certificates,
 
 `lib/` holds the modules sourced by `harden.sh` — not run directly.
 
+## Screenshots
+
+**One run, full baseline** — `sudo bash harden.sh` (shown with `--dry-run`):
+
+![harden.sh run](docs/images/harden-run.svg)
+
+![harden.sh summary](docs/images/harden-summary.svg)
+
+**Compliance self-audit** — `sudo bash verify.sh` (this is an unhardened box, so it's mostly red — after `harden.sh` it's green):
+
+![verify.sh report](docs/images/verify-report.svg)
+
+**Login dashboard** — shown on every SSH login:
+
+![MOTD security dashboard](docs/images/motd-dashboard.svg)
+
 ## Quick start
 
 ```bash
