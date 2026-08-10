@@ -182,7 +182,7 @@ scp -P 2223 user@server-ip:~/.ssh/hardened-cert.pub ~/.ssh/
 
 # 2. Pin the host CA in known_hosts (kills host-key prompts + MITM)
 echo '@cert-authority * ssh-ed25519 AAAA... ssh-ca@server' >> ~/.ssh/known_hosts
-#    (paste the contents of /etc/ssh/ssh_ca.pub after '@cert-authority * ')
+#    (replace the key blob with the actual contents of /etc/ssh/ssh_ca.pub on the server)
 
 # 3. Connect (ssh picks up hardened-cert.pub automatically)
 ssh -p 2223 -i ~/.ssh/hardened user@server-ip
@@ -233,11 +233,13 @@ Sample output:
   PASS: 34   FAIL: 0   WARN: 2
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+(counts vary by distro)
 
 Exit codes: `0` = no failures (WARNs allowed), `1` = at least one FAIL. That makes it cron-friendly — example drift alert:
 
 ```bash
-# /etc/cron.d/newshell-verify (example — adjust path and address)
+# /etc/cron.d/newshell-verify (example — adjust path and address; copy the whole
+# newshell directory to /opt/newshell — verify.sh sources lib/common.sh)
 0 6 * * * root /opt/newshell/verify.sh || mail -s "hardening drift" admin@example.com
 ```
 

@@ -117,6 +117,13 @@ sign_host_cert() {
     local hostnames
     hostnames="$(hostname),$(hostname -f 2>/dev/null || hostname)"
 
+    # Include IPs so users connecting by address (the common case) match a principal
+    local ips
+    ips=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' | sort -u | paste -sd, - || true)
+    if [[ -n "$ips" ]]; then
+        hostnames="${hostnames},${ips}"
+    fi
+
     run ssh-keygen -s "$CA_KEY" \
         -I "host-$(hostname)-$(date +%Y%m%d)" \
         -h \

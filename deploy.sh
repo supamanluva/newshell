@@ -140,15 +140,17 @@ fi
 # ── Step 2 (optional): Copy and run harden.sh ──────────────────────────────────
 
 if $DO_HARDEN; then
-    echo -e "${CYAN}[INFO]${NC}  Copying harden.sh to ${TARGET} ..."
+    echo -e "${CYAN}[INFO]${NC}  Copying hardening toolkit to ${TARGET} ..."
 
-    scp -P "$PORT" "${SCRIPT_DIR}/harden.sh" "${TARGET}:/tmp/harden.sh"
+    REMOTE_DIR=$(ssh -p "$PORT" "$TARGET" "mktemp -d /tmp/newshell.XXXXXX")
+    scp -P "$PORT" "${SCRIPT_DIR}/harden.sh" "${SCRIPT_DIR}/verify.sh" "${TARGET}:${REMOTE_DIR}/"
+    scp -P "$PORT" -r "${SCRIPT_DIR}/lib" "${TARGET}:${REMOTE_DIR}/"
 
     echo -e "${YELLOW}[WARN]${NC}  Running harden.sh on remote server."
     echo -e "${YELLOW}[WARN]${NC}  After this, SSH port will change to 2223."
     echo ""
 
-    ssh -t -p "$PORT" "$TARGET" "sudo bash /tmp/harden.sh && rm -f /tmp/harden.sh"
+    ssh -t -p "$PORT" "$TARGET" "sudo bash ${REMOTE_DIR}/harden.sh; rc=\$?; rm -rf ${REMOTE_DIR}; exit \$rc"
 
     # ── Pull signed cert + CA pubkey back to local machine ──
     NEW_PORT=2223
