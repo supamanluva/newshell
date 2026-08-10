@@ -48,6 +48,8 @@ source "${SCRIPT_DIR}/lib/aide.sh"
 source "${SCRIPT_DIR}/lib/motd.sh"
 # shellcheck source=lib/auditd.sh
 source "${SCRIPT_DIR}/lib/auditd.sh"
+# shellcheck source=lib/accounts.sh
+source "${SCRIPT_DIR}/lib/accounts.sh"
 
 SSH_PORT=2223
 SSHD_CONFIG="/etc/ssh/sshd_config"
@@ -210,6 +212,8 @@ main() {
     harden_shared_memory
     echo ""
     configure_auditd
+    echo ""
+    configure_accounts
     echo ""
     configure_rkhunter
     echo ""
