@@ -56,6 +56,10 @@ configure_auditd() {
 -w /usr/bin/sudo -p x -k priv_esc
 -w /bin/su -p x -k priv_esc
 
+# setuid/setgid syscalls (privilege changes)
+-a always,exit -F arch=b64 -S setuid -S setgid -S setreuid -S setregid -k perm_mod
+-a always,exit -F arch=b32 -S setuid -S setgid -S setreuid -S setregid -k perm_mod
+
 # Login records
 -w /var/log/lastlog -p wa -k logins
 RULESEOF
@@ -84,6 +88,12 @@ Storage=persistent
 JEOF
     run systemctl restart systemd-journald
     log_ok "journald set to persistent storage."
+
+    if [[ -f /etc/logrotate.d/auditd ]]; then
+        log_ok "auditd logrotate present."
+    else
+        log_warn "No /etc/logrotate.d/auditd — audit logs may grow unbounded."
+    fi
 
     log_ok "auditd configured (identity, ssh, time, modules, priv-esc, logins)."
 }

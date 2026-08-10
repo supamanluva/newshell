@@ -28,6 +28,8 @@ configure_firewall() {
     run ufw allow out 80/tcp    # HTTP (package updates)
     run ufw allow out 443/tcp   # HTTPS
     run ufw allow out 123/udp   # NTP
+    run ufw allow out 67/udp    # DHCP client (lease renewal)
+    run ufw allow out 68/udp    # DHCP client
 
     # Allow the SSH port
     run ufw allow in "${SSH_PORT}/tcp" comment "SSH (hardened)"
@@ -41,5 +43,9 @@ configure_firewall() {
     fi
 
     log_ok "UFW active — only port ${SSH_PORT}/tcp (SSH) is open for incoming."
-    ufw status verbose
+    if [[ "$DRY_RUN" == "1" ]]; then
+        echo "[DRY] ufw status verbose"
+    else
+        ufw status verbose
+    fi
 }

@@ -53,6 +53,7 @@ else
         warn "MaxAuthTries unknown"
     fi
     [[ "$(sshd_val allowtcpforwarding)" == "no" ]] && pass "TCP forwarding off" || warn "TCP forwarding on"
+    [[ "$(sshd_val allowagentforwarding)" == "no" ]] && pass "agent forwarding off" || warn "agent forwarding on"
     [[ "$(sshd_val x11forwarding)" == "no" ]] && pass "X11 forwarding off" || warn "X11 forwarding on"
 fi
 
@@ -62,8 +63,8 @@ if command -v ufw &>/dev/null && ufw status | grep -q 'Status: active'; then
     ufw status verbose | grep -q 'deny (incoming)' && pass "default deny incoming" || fail "incoming not deny"
     # Inbound rules only; skip IPv6 "(v6)" duplicates so v4+v6 pairs count once.
     allow_in=$(ufw status | grep 'ALLOW IN' | grep -v '(v6)' || true)
-    if echo "$allow_in" | grep -q "$SSH_PORT/tcp"; then
-        extra=$(echo "$allow_in" | grep -v "$SSH_PORT/tcp" || true)
+    if echo "$allow_in" | awk -v p="${SSH_PORT}/tcp" '$1==p {found=1} END{exit !found}'; then
+        extra=$(echo "$allow_in" | awk -v p="${SSH_PORT}/tcp" '$1!=p' || true)
         if [[ -z "$extra" ]]; then
             pass "only SSH port open: $SSH_PORT/tcp"
         else
@@ -114,7 +115,10 @@ sysctl_check net.ipv4.ip_forward 0
 sysctl_check kernel.randomize_va_space 2
 sysctl_check kernel.kptr_restrict 2
 sysctl_check kernel.dmesg_restrict 1
+sysctl_check kernel.yama.ptrace_scope 1
+sysctl_check kernel.perf_event_paranoid 3
 sysctl_check fs.protected_hardlinks 1
+sysctl_check fs.protected_symlinks 1
 sysctl_check fs.suid_dumpable 0
 
 section "Mounts"
@@ -126,7 +130,15 @@ mount_hardened() {
 if findmnt /run/shm &>/dev/null; then mount_hardened /run/shm
 elif findmnt /dev/shm &>/dev/null; then mount_hardened /dev/shm
 else warn "no shm mount found"; fi
-mount_hardened /tmp
+# /tmp may be enabled but deferred to reboot (busy at harden time) — WARN, not FAIL
+if findmnt -no OPTIONS /tmp 2>/dev/null | grep -q noexec \
+   && findmnt -no OPTIONS /tmp 2>/dev/null | grep -q nosuid; then
+    pass "/tmp has noexec,nosuid"
+elif systemctl is-enabled --quiet tmp.mount 2>/dev/null; then
+    warn "/tmp tmpfs enabled but not active — will apply on next boot"
+else
+    fail "/tmp not hardened"
+fi
 
 section "Auto-updates"
 if systemctl is-enabled --quiet apt-daily-upgrade.timer 2>/dev/null \

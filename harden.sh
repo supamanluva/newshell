@@ -108,6 +108,13 @@ preflight() {
 
     USER_SSH_DIR="${TARGET_HOME}/.ssh"
 
+    if [[ "${CERT_ONLY:-0}" == "1" && -f "${USER_SSH_DIR}/hardened-cert.pub" ]]; then
+        # Existing cert must be valid for this user, or cert-only mode locks us out
+        if ! ssh-keygen -L -f "${USER_SSH_DIR}/hardened-cert.pub" | grep -q "${TARGET_USER}"; then
+            bail "--cert-only: existing cert does not cover principal ${TARGET_USER}. Fix certs first."
+        fi
+    fi
+
     log_info "Target user : ${TARGET_USER}"
     log_info "Home dir    : ${TARGET_HOME}"
     log_info "SSH port    : ${SSH_PORT}"
@@ -177,15 +184,19 @@ print_summary() {
     echo ""
 
     # Base64-encode the private key for easy single copy-paste
-    local KEY_B64
-    KEY_B64=$(base64 -w0 < "${TARGET_HOME}/.ssh/hardened")
+    if [[ "$DRY_RUN" == "1" && ! -f "${TARGET_HOME}/.ssh/hardened" ]]; then
+        log_info "[DRY] would print base64 key export one-liner"
+    else
+        local KEY_B64
+        KEY_B64=$(base64 -w0 < "${TARGET_HOME}/.ssh/hardened")
 
-    echo -e "${YELLOW}── Run this ONE command on your local machine ──${NC}"
-    echo ""
-    echo "echo '${KEY_B64}' | base64 -d > ~/.ssh/hardened && chmod 600 ~/.ssh/hardened && echo 'Done! Key installed.'"
-    echo ""
-    echo -e "${GREEN}Then connect with:${NC}"
-    echo -e "  ${CYAN}ssh -p ${SSH_PORT} -i ~/.ssh/hardened ${TARGET_USER}@<server-ip>${NC}"
+        echo -e "${YELLOW}── Run this ONE command on your local machine ──${NC}"
+        echo ""
+        echo "echo '${KEY_B64}' | base64 -d > ~/.ssh/hardened && chmod 600 ~/.ssh/hardened && echo 'Done! Key installed.'"
+        echo ""
+        echo -e "${GREEN}Then connect with:${NC}"
+        echo -e "  ${CYAN}ssh -p ${SSH_PORT} -i ~/.ssh/hardened ${TARGET_USER}@<server-ip>${NC}"
+    fi
 
     print_cert_export
 }

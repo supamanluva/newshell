@@ -10,7 +10,7 @@ configure_services() {
         return 0
     fi
 
-    local units=(telnet.socket telnetd.socket rsh.socket rlogin.socket rexec.socket)
+    local units=(telnet.socket telnetd.socket telnetd rsh.socket rsh-server rlogin.socket rexec.socket)
     local found=0
     for u in "${units[@]}"; do
         if systemctl list-unit-files "$u" &>/dev/null && systemctl list-unit-files | grep -q "^${u}"; then

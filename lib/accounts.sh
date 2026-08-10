@@ -41,6 +41,11 @@ configure_accounts() {
         log_warn "No sudo/wheel group found — ${TARGET_USER} may not be able to sudo!"
     fi
 
+    # Loud warning if the user may have no working sudo auth path at all
+    if passwd -S "$TARGET_USER" 2>/dev/null | grep -qE " (L|NP) " && ! grep -rq NOPASSWD /etc/sudoers /etc/sudoers.d/ 2>/dev/null; then
+        log_warn "${TARGET_USER} has a locked/empty password and no NOPASSWD rule — sudo may be unusable! Set a password or add NOPASSWD before logging out."
+    fi
+
     # ── password quality ──
     case "$(pm)" in
         apt)    pkg_install libpam-pwquality ;;

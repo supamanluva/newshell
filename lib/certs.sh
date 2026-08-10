@@ -110,6 +110,10 @@ sign_host_cert() {
 
     # Ensure host keys exist (fresh containers sometimes lack them)
     if [[ ! -f "${HOST_KEY}.pub" ]]; then
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log_info "[DRY] would generate host keys and sign host certificate"
+            return 0
+        fi
         run ssh-keygen -A
     fi
     [[ -f "${HOST_KEY}.pub" ]] || bail "Host key ${HOST_KEY}.pub missing even after ssh-keygen -A."

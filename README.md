@@ -143,10 +143,11 @@ bash deploy.sh user@server-ip [port] [--replace] [--harden]
 | Key exchange | `curve25519-sha256` only |
 | Ciphers | `chacha20-poly1305`, `aes256-gcm`, `aes128-gcm` |
 | MACs | `hmac-sha2-512-etm`, `hmac-sha2-256-etm` |
-| Firewall (UFW) | Deny all in/out, allow `2223/tcp` + DNS/HTTP/HTTPS/NTP outbound |
+| Host key algorithms | `ssh-ed25519-cert-v01@openssh.com` (host certificate) + `ssh-ed25519` |
+| Firewall (UFW) | Deny all in/out, allow `2223/tcp` + DNS/HTTP/HTTPS/NTP/DHCP outbound |
 | Auto-updates | Security-only (unattended-upgrades / dnf-automatic / yum-cron) |
 | fail2ban | SSH jail — 3 failed attempts = 24h ban |
-| auditd | CIS-style rules (`/etc/audit/rules.d/hardening.rules`): identity files, sshd config + CA, time changes, kernel modules, sudo/su, logins; journald set to persistent |
+| auditd | CIS-style rules (`/etc/audit/rules.d/hardening.rules`): identity files, sshd config + CA, time changes, kernel modules, sudo/su, setuid/setgid syscalls, logins; journald set to persistent |
 | Password quality | pwquality `minlen 14` + digit/upper/lower/other character classes |
 | Account lockout | faillock: 5 failed attempts → 15 min lockout |
 | umask | `027` via `/etc/login.defs` (+ 90-day password aging) |
@@ -326,4 +327,5 @@ sudo nano /etc/fstab
 - **`--cert-only` is the strict mode.** It removes the `authorized_keys` fallback so every login requires a CA-signed, expiring cert — better audit trail, but you must re-sign before certs expire (52 weeks).
 - **`authorized_keys` is a deliberate fallback in the default mode.** Your raw pubkey still works alongside the cert, so an expired or lost cert can't lock you out.
 - **verify.sh checks configuration, not compromise.** A green run means the controls are still in place; it does not prove the box is clean. That's what AIDE/rkhunter/auditd logs are for.
+- **The private key leaves the server once** — via the base64 one-liner in the summary, which passes through your terminal/scrollback. Future improvement: generate the key client-side (`generate.sh`) and push only the pubkey, eliminating the export entirely.
 - **This is a baseline, not a substitute** for patching, monitoring, and least-privilege hygiene. Automate verify.sh, watch the audit logs, and keep the system updated.

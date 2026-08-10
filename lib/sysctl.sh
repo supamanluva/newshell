@@ -78,7 +78,9 @@ SYSEOF
     if [[ "$DRY_RUN" == "1" ]]; then
         echo "[DRY] sysctl --system"
     else
-        sysctl --system > /dev/null 2>&1
+        if ! sysctl --system > /dev/null 2>&1; then
+            log_warn "sysctl --system reported errors — review ${SYSCTL_CONF}"
+        fi
     fi
 
     log_ok "Kernel/network hardening applied via ${SYSCTL_CONF}."

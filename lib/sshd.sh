@@ -62,7 +62,8 @@ ${auth_keys_line}
 PasswordAuthentication no
 ChallengeResponseAuthentication no
 KbdInteractiveAuthentication no
-UsePAM no
+# PAM needed for dynamic MOTD, limits, faillock — password auth stays disabled above
+UsePAM yes
 PermitEmptyPasswords no
 
 # ── Security hardening ───────────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ LogLevel VERBOSE
 KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
 Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
 MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
-HostKeyAlgorithms ssh-ed25519
+HostKeyAlgorithms ssh-ed25519-cert-v01@openssh.com,ssh-ed25519
 
 # ── Certificate trust ────────────────────────────────────────────────────────
 TrustedUserCAKeys /etc/ssh/ssh_ca.pub

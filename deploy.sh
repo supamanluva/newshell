@@ -171,6 +171,11 @@ if $DO_HARDEN; then
             echo "@cert-authority ${HOST_PART} ${CA_PUB}" >> "$HOME/.ssh/known_hosts"
             echo -e "${GREEN}[ OK ]${NC}  Host CA pinned for ${HOST_PART} in known_hosts."
         fi
+    else
+        echo -e "${YELLOW}[WARN]${NC}  Could not fetch CA pubkey (sudo password required?)."
+        echo -e "       Pin the host CA manually:"
+        echo -e "  ${CYAN}ssh -p ${NEW_PORT} ${TARGET} 'sudo cat /etc/ssh/ssh_ca.pub' >> ~/.ssh/ssh_ca_tmp${NC}"
+        echo -e "  ${CYAN}echo \"@cert-authority ${TARGET#*@} \$(cat ~/.ssh/ssh_ca_tmp)\" >> ~/.ssh/known_hosts${NC}"
     fi
 
     echo ""
