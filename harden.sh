@@ -34,6 +34,8 @@ source "${SCRIPT_DIR}/lib/updates.sh"
 source "${SCRIPT_DIR}/lib/fail2ban.sh"
 # shellcheck source=lib/shm.sh
 source "${SCRIPT_DIR}/lib/shm.sh"
+# shellcheck source=lib/certs.sh
+source "${SCRIPT_DIR}/lib/certs.sh"
 # shellcheck source=lib/sshd.sh
 source "${SCRIPT_DIR}/lib/sshd.sh"
 # shellcheck source=lib/sysctl.sh
@@ -48,6 +50,7 @@ source "${SCRIPT_DIR}/lib/motd.sh"
 SSH_PORT=2223
 SSHD_CONFIG="/etc/ssh/sshd_config"
 SSHD_CONFIG_BACKUP="/etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)"
+CERT_ONLY=0
 
 # ─── pre-flight checks ─────────────────────────────────────────────────────────
 
@@ -78,7 +81,7 @@ preflight() {
     fi
 
     # Determine target user
-    TARGET_USER="${1:-${SUDO_USER:-}}"
+    TARGET_USER="${TARGET_USER_ARG:-${POSITIONAL_USER:-${SUDO_USER:-}}}"
     if [[ -z "$TARGET_USER" ]]; then
         bail "Cannot determine target user. Pass username as first argument."
     fi
@@ -91,50 +94,33 @@ preflight() {
         bail "Home directory for user '${TARGET_USER}' not found at ${TARGET_HOME}."
     fi
 
+    USER_SSH_DIR="${TARGET_HOME}/.ssh"
+
     log_info "Target user : ${TARGET_USER}"
     log_info "Home dir    : ${TARGET_HOME}"
     log_info "SSH port    : ${SSH_PORT}"
 }
 
-# ─── step 1: generate passphrase-protected key pair ─────────────────────────────
+# ─── argument parsing ──────────────────────────────────────────────────────────
 
-generate_key() {
-    log_info "──── Generating SSH Key ────"
-
-    USER_SSH_DIR="${TARGET_HOME}/.ssh"
-    mkdir -p "$USER_SSH_DIR"
-    chmod 700 "$USER_SSH_DIR"
-
-    USER_KEY="${USER_SSH_DIR}/hardened"
-    if [[ ! -f "$USER_KEY" ]]; then
-        echo ""
-        log_info "You will be asked to set a passphrase for your SSH key."
-        log_info "This passphrase is required every time you connect."
-        echo ""
-        # Run ssh-keygen as the target user so the passphrase prompt works
-        sudo -u "${TARGET_USER}" ssh-keygen -t ed25519 -f "$USER_KEY" -C "${TARGET_USER}@$(hostname)"
-        log_ok "Key pair created at ${USER_KEY}"
-    else
-        log_warn "Key ${USER_KEY} already exists — skipping generation."
-    fi
-
-    # Add public key to authorized_keys
-    AUTH_KEYS="${USER_SSH_DIR}/authorized_keys"
-    PUB_KEY=$(cat "${USER_KEY}.pub")
-
-    if [[ -f "$AUTH_KEYS" ]] && grep -qF "$PUB_KEY" "$AUTH_KEYS"; then
-        log_warn "Public key already in authorized_keys — skipping."
-    else
-        echo "$PUB_KEY" >> "$AUTH_KEYS"
-        log_ok "Public key added to authorized_keys."
-    fi
-
-    # Fix permissions
-    chmod 600 "$AUTH_KEYS" "$USER_KEY"
-    chmod 644 "${USER_KEY}.pub"
-    chown -R "${TARGET_USER}:${TARGET_USER}" "$USER_SSH_DIR"
-
-    log_ok "SSH key setup complete."
+parse_args() {
+    local positional=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)   DRY_RUN=1 ;;
+            --cert-only) CERT_ONLY=1 ;;
+            --user)      shift; TARGET_USER_ARG="${1:-}" ;;
+            --user=*)    TARGET_USER_ARG="${1#--user=}" ;;
+            -h|--help)
+                echo "Usage: sudo bash harden.sh [--user name] [--dry-run] [--cert-only]"
+                exit 0
+                ;;
+            *)           positional+=("$1") ;;
+        esac
+        shift
+    done
+    # Backward compat: bare positional username still works
+    POSITIONAL_USER="${positional[0]:-}"
 }
 
 # ─── step 11: print summary ────────────────────────────────────────────────────
@@ -174,18 +160,22 @@ print_summary() {
     echo ""
     echo -e "${GREEN}Then connect with:${NC}"
     echo -e "  ${CYAN}ssh -p ${SSH_PORT} -i ~/.ssh/hardened ${TARGET_USER}@<server-ip>${NC}"
+
+    print_cert_export
 }
 
 # ─── main ───────────────────────────────────────────────────────────────────────
 
 main() {
+    parse_args "$@"
+
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}  Linux Shell Hardening Tool${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
-    preflight "$@"
+    preflight
 
     echo ""
     log_warn "This will overwrite your sshd_config and firewall rules."
@@ -198,6 +188,12 @@ main() {
     fi
 
     generate_key
+    echo ""
+    setup_ca
+    echo ""
+    sign_user_cert
+    echo ""
+    sign_host_cert
     echo ""
     configure_sshd
     echo ""
