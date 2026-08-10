@@ -80,6 +80,7 @@ PUB_KEY=$(cat "${LOCAL_KEY}.pub")
 # ── Step 1: Copy public key to remote authorized_keys ──────────────────────────
 
 # Remote helper: set up ~/.ssh and write the key, using sudo if needed
+# shellcheck disable=SC2016  # single quotes intentional: expanded on the remote side
 REMOTE_SETUP='
 set -e
 SSH_DIR="$HOME/.ssh"
@@ -149,9 +150,30 @@ if $DO_HARDEN; then
 
     ssh -t -p "$PORT" "$TARGET" "sudo bash /tmp/harden.sh && rm -f /tmp/harden.sh"
 
+    # ── Pull signed cert + CA pubkey back to local machine ──
+    NEW_PORT=2223
+    echo -e "${CYAN}[INFO]${NC}  Fetching signed certificate from ${TARGET} ..."
+    if scp -P "$NEW_PORT" "${TARGET}:~/.ssh/hardened-cert.pub" "${LOCAL_KEY}-cert.pub"; then
+        echo -e "${GREEN}[ OK ]${NC}  Certificate saved to ${LOCAL_KEY}-cert.pub"
+    else
+        echo -e "${YELLOW}[WARN]${NC}  Could not fetch cert — pull it later:"
+        echo -e "  ${CYAN}scp -P ${NEW_PORT} ${TARGET}:~/.ssh/hardened-cert.pub ~/.ssh/${NC}"
+    fi
+
+    CA_PUB=$(ssh -p "$NEW_PORT" "$TARGET" "sudo cat /etc/ssh/ssh_ca.pub" 2>/dev/null || true)
+    if [[ -n "$CA_PUB" ]]; then
+        echo ""
+        read -rp "Add @cert-authority entry to ~/.ssh/known_hosts? [y/N] " yn
+        if [[ "$yn" =~ ^[Yy]$ ]]; then
+            HOST_PART="${TARGET#*@}"
+            echo "@cert-authority ${HOST_PART} ${CA_PUB}" >> "$HOME/.ssh/known_hosts"
+            echo -e "${GREEN}[ OK ]${NC}  Host CA pinned for ${HOST_PART} in known_hosts."
+        fi
+    fi
+
     echo ""
     echo -e "${GREEN}[ OK ]${NC}  Server hardened. Connect with:"
-    echo -e "  ${CYAN}ssh -p 2223 -i ~/.ssh/hardened ${TARGET}${NC}"
+    echo -e "  ${CYAN}ssh -p 2223 -i ~/.ssh/hardened -o CertificateFile=~/.ssh/hardened-cert.pub ${TARGET}${NC}"
 else
     echo ""
     echo -e "${GREEN}Key deployed. Connect with:${NC}"

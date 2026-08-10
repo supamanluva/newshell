@@ -58,6 +58,18 @@ printf "  ${CYAN}── Services ──${NC}\n"
 check_service "SSHD" "sshd" || check_service "SSHD" "ssh"
 check_service "UFW" "ufw"
 check_service "fail2ban" "fail2ban"
+check_service "auditd" "auditd"
+printf "\n"
+
+# ── root account ────────────────────────────────────────────────────────────
+ROOT_STATUS=$(passwd -S root 2>/dev/null || true)
+if [[ -z "$ROOT_STATUS" ]]; then
+    printf "  ${DIM}●${NC} %-14s ${DIM}unknown (need root)${NC}\n" "root account"
+elif echo "$ROOT_STATUS" | grep -qE '^root L'; then
+    printf "  ${GREEN}●${NC} %-14s ${GREEN}locked${NC}\n" "root account"
+else
+    printf "  ${RED}●${NC} %-14s ${RED}UNLOCKED${NC}\n" "root account"
+fi
 printf "\n"
 
 # ── Firewall status ──────────────────────────────────────────────────────────────
@@ -84,6 +96,20 @@ last -i -5 2>/dev/null | head -5 | while IFS= read -r line; do
     [[ -n "$line" ]] && printf "  ${DIM}%s${NC}\n" "$line"
 done
 printf "\n"
+
+# ── SSH certificate trust ───────────────────────────────────────────────────
+if [[ -f /etc/ssh/ssh_ca.pub ]]; then
+    CERT_FILE=$(ls /home/*/.ssh/hardened-cert.pub /root/.ssh/hardened-cert.pub 2>/dev/null | head -1)
+    printf "  ${CYAN}── SSH Certificates ──${NC}\n"
+    printf "  CA trust   : ${GREEN}enabled${NC}\n"
+    if [[ -n "$CERT_FILE" ]]; then
+        CERT_EXP=$(ssh-keygen -L -f "$CERT_FILE" 2>/dev/null | awk '/Valid:/ {print $NF}')
+        printf "  User cert  : valid until %s\n" "${CERT_EXP:-unknown}"
+    else
+        printf "  User cert  : ${YELLOW}none found${NC}\n"
+    fi
+    printf "\n"
+fi
 
 # ── Failed login attempts (last 24h) ────────────────────────────────────────────
 if [[ -r /var/log/auth.log ]]; then
