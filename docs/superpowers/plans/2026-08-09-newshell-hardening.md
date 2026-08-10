@@ -951,7 +951,9 @@ configure_services() {
             log_ok "Disabled and masked ${u}."
         fi
     done
-    [[ "$found" == "0" ]] && log_ok "No legacy services (telnet/rsh/rlogin/rexec) installed."
+    if [[ "$found" == "0" ]]; then
+        log_ok "No legacy services (telnet/rsh/rlogin/rexec) installed."
+    fi
 }
 
 harden_tmp() {
