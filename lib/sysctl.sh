@@ -41,6 +41,30 @@ net.ipv4.icmp_echo_ignore_broadcasts = 1
 # Ignore bogus ICMP error responses
 net.ipv4.icmp_ignore_bogus_error_responses = 1
 
+# ── Kernel hardening ─────────────────────────────────────────────────────────
+
+# Full ASLR
+kernel.randomize_va_space = 2
+
+# Hide kernel pointers from unprivileged users
+kernel.kptr_restrict = 2
+
+# Restrict dmesg to privileged users
+kernel.dmesg_restrict = 1
+
+# Restrict ptrace to parent processes only
+kernel.yama.ptrace_scope = 1
+
+# Restrict perf events to root
+kernel.perf_event_paranoid = 3
+
+# Hardlink/symlink protection
+fs.protected_hardlinks = 1
+fs.protected_symlinks = 1
+
+# No core dumps from setuid binaries
+fs.suid_dumpable = 0
+
 # Log suspicious packets (martians)
 net.ipv4.conf.all.log_martians = 1
 net.ipv4.conf.default.log_martians = 1
