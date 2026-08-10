@@ -17,7 +17,7 @@ configure_fail2ban() {
     fi
 
     # Write a local jail config (overrides without touching the default)
-    cat > /etc/fail2ban/jail.local <<JAILEOF
+    write_file /etc/fail2ban/jail.local <<JAILEOF
 [DEFAULT]
 bantime  = 1h
 findtime = 10m
@@ -32,8 +32,7 @@ maxretry = 3
 bantime  = 24h
 JAILEOF
 
-    systemctl enable --now fail2ban
-    systemctl restart fail2ban
-
+    run systemctl enable --now fail2ban
+    run systemctl restart fail2ban
     log_ok "fail2ban active — SSH brute-force protection on port ${SSH_PORT}."
 }
