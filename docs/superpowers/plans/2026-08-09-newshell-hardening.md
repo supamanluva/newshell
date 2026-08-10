@@ -1255,7 +1255,7 @@ After the existing `ssh -t -p "$PORT" "$TARGET" "sudo bash /tmp/harden.sh && rm 
     CA_PUB=$(ssh -p "$NEW_PORT" "$TARGET" "sudo cat /etc/ssh/ssh_ca.pub" 2>/dev/null || true)
     if [[ -n "$CA_PUB" ]]; then
         echo ""
-        read -rp "Add @cert-authority entry to ~/.ssh/known_hosts? [y/N] " yn
+        read -rp "Add @cert-authority entry to ~/.ssh/known_hosts? [y/N] " yn || true
         if [[ "$yn" =~ ^[Yy]$ ]]; then
             HOST_PART="${TARGET#*@}"
             echo "@cert-authority ${HOST_PART} ${CA_PUB}" >> "$HOME/.ssh/known_hosts"
