@@ -80,7 +80,7 @@ else
 fi
 
 # Log warnings to syslog
-WARNS=$(grep -cE '(changed|added|removed):' "$LOGFILE" 2>/dev/null || echo 0)
+WARNS=$(grep -cE '(changed|added|removed):' "$LOGFILE" 2>/dev/null)
 if [ "$WARNS" -gt 0 ]; then
     logger -t aide -p auth.warning "AIDE detected $WARNS file integrity change(s). Review $LOGFILE"
 fi

@@ -44,7 +44,14 @@ else
     [[ "$(sshd_val pubkeyauthentication)" == "yes" ]] && pass "PubkeyAuthentication yes" || fail "pubkey auth off"
     [[ -n "$(sshd_val trustedusercakeys)" ]] && pass "TrustedUserCAKeys set" || fail "no CA trust configured"
     [[ -n "$(sshd_val hostcertificate)" ]] && pass "HostCertificate set" || warn "no host certificate"
-    local_max=$(sshd_val maxauthtries); [[ "${local_max:-9}" -le 3 ]] && pass "MaxAuthTries $local_max" || warn "MaxAuthTries $local_max"
+    local_max=$(sshd_val maxauthtries)
+    if [[ "$local_max" =~ ^[0-9]+$ ]] && [[ "$local_max" -le 3 ]]; then
+        pass "MaxAuthTries $local_max"
+    elif [[ "$local_max" =~ ^[0-9]+$ ]]; then
+        warn "MaxAuthTries $local_max"
+    else
+        warn "MaxAuthTries unknown"
+    fi
     [[ "$(sshd_val allowtcpforwarding)" == "no" ]] && pass "TCP forwarding off" || warn "TCP forwarding on"
     [[ "$(sshd_val x11forwarding)" == "no" ]] && pass "X11 forwarding off" || warn "X11 forwarding on"
 fi
@@ -53,7 +60,18 @@ section "Firewall (UFW)"
 if command -v ufw &>/dev/null && ufw status | grep -q 'Status: active'; then
     pass "UFW active"
     ufw status verbose | grep -q 'deny (incoming)' && pass "default deny incoming" || fail "incoming not deny"
-    ufw status | grep -q "$SSH_PORT/tcp" && pass "only SSH port open: $SSH_PORT/tcp" || fail "SSH port $SSH_PORT not allowed"
+    # Inbound rules only; skip IPv6 "(v6)" duplicates so v4+v6 pairs count once.
+    allow_in=$(ufw status | grep 'ALLOW IN' | grep -v '(v6)' || true)
+    if echo "$allow_in" | grep -q "$SSH_PORT/tcp"; then
+        extra=$(echo "$allow_in" | grep -v "$SSH_PORT/tcp" || true)
+        if [[ -z "$extra" ]]; then
+            pass "only SSH port open: $SSH_PORT/tcp"
+        else
+            warn "additional ports open: $(echo "$extra" | awk '{print $1}' | paste -sd, -)"
+        fi
+    else
+        fail "SSH port $SSH_PORT not allowed"
+    fi
 else
     fail "UFW missing or inactive"
 fi
@@ -80,7 +98,7 @@ grep -q '^Storage=persistent' /etc/systemd/journald.conf.d/99-hardening.conf 2>/
 section "Accounts"
 passwd -S root 2>/dev/null | grep -qE '^root L' && pass "root password locked" || fail "root password NOT locked"
 grep -qE '^UMASK\s+027' /etc/login.defs && pass "UMASK 027 in login.defs" || warn "UMASK not 027"
-grep -qE '^\s*minlen\s*=\s*1[4-9]' /etc/security/pwquality.conf 2>/dev/null && pass "pwquality minlen >= 14" || warn "pwquality not configured"
+grep -qE '^\s*minlen\s*=\s*(1[4-9]|[2-9][0-9])' /etc/security/pwquality.conf 2>/dev/null && pass "pwquality minlen >= 14" || warn "pwquality not configured"
 grep -qE '^\s*deny\s*=\s*[1-5]\b' /etc/security/faillock.conf 2>/dev/null && pass "faillock configured" || warn "faillock not configured"
 
 section "Sysctl"
@@ -146,10 +164,13 @@ fi
 [[ -f /etc/ssh/ssh_host_ed25519_key-cert.pub ]] && pass "host certificate present" || warn "no host certificate"
 
 section "Legacy services"
+LEGACY_FAIL=0
 for u in telnet.socket rsh.socket rlogin.socket rexec.socket; do
-    systemctl is-active --quiet "$u" 2>/dev/null && fail "$u is ACTIVE" || true
+    if systemctl is-active --quiet "$u" 2>/dev/null; then
+        fail "$u is ACTIVE"; LEGACY_FAIL=1
+    fi
 done
-pass "no legacy services active (telnet/rsh/rlogin/rexec)"
+[[ "$LEGACY_FAIL" -eq 0 ]] && pass "no legacy services active (telnet/rsh/rlogin/rexec)"
 for u in cups avahi-daemon vsftpd; do
     systemctl is-active --quiet "$u" 2>/dev/null && warn "$u is active — confirm it is intentional" || true
 done

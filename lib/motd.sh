@@ -122,7 +122,7 @@ fi
 
 if [[ -n "$LOGFILE" ]]; then
     YESTERDAY=$(date -d '24 hours ago' '+%b %e' 2>/dev/null || date -v-1d '+%b %e' 2>/dev/null)
-    FAILED=$(grep -c 'Failed password\|authentication failure' "$LOGFILE" 2>/dev/null || echo 0)
+    FAILED=$(grep -c 'Failed password\|authentication failure' "$LOGFILE" 2>/dev/null)
     printf "  ${CYAN}── Failed Auth (24h) ──${NC}\n"
     if [[ "$FAILED" -gt 20 ]]; then
         printf "  ${RED}%s failed attempts${NC} (check logs!)\n" "$FAILED"
@@ -137,7 +137,7 @@ fi
 # ── rkhunter last scan ───────────────────────────────────────────────────────────
 if [[ -f /var/log/rkhunter.log ]]; then
     RKH_DATE=$(stat -c '%y' /var/log/rkhunter.log 2>/dev/null | cut -d. -f1)
-    RKH_WARNINGS=$(grep -c '\[ Warning \]' /var/log/rkhunter.log 2>/dev/null || echo 0)
+    RKH_WARNINGS=$(grep -c '\[ Warning \]' /var/log/rkhunter.log 2>/dev/null)
     printf "  ${CYAN}── rkhunter ──${NC}\n"
     printf "  Last scan  : %s\n" "${RKH_DATE:-never}"
     if [[ "$RKH_WARNINGS" -gt 0 ]]; then
@@ -152,9 +152,9 @@ fi
 AIDE_LOG="/var/log/aide/aide-check.log"
 if [[ -f "$AIDE_LOG" ]]; then
     AIDE_DATE=$(stat -c '%y' "$AIDE_LOG" 2>/dev/null | cut -d. -f1)
-    AIDE_ADDED=$(grep -c 'added:' "$AIDE_LOG" 2>/dev/null || echo 0)
-    AIDE_CHANGED=$(grep -c 'changed:' "$AIDE_LOG" 2>/dev/null || echo 0)
-    AIDE_REMOVED=$(grep -c 'removed:' "$AIDE_LOG" 2>/dev/null || echo 0)
+    AIDE_ADDED=$(grep -c 'added:' "$AIDE_LOG" 2>/dev/null)
+    AIDE_CHANGED=$(grep -c 'changed:' "$AIDE_LOG" 2>/dev/null)
+    AIDE_REMOVED=$(grep -c 'removed:' "$AIDE_LOG" 2>/dev/null)
     AIDE_TOTAL=$((AIDE_ADDED + AIDE_CHANGED + AIDE_REMOVED))
     printf "  ${CYAN}── AIDE (File Integrity) ──${NC}\n"
     printf "  Last check : %s\n" "${AIDE_DATE:-never}"
@@ -169,14 +169,14 @@ fi
 
 # ── Pending updates ──────────────────────────────────────────────────────────────
 if command -v apt-get &>/dev/null; then
-    UPDATES=$(apt list --upgradable 2>/dev/null | grep -c upgradable || echo 0)
+    UPDATES=$(apt list --upgradable 2>/dev/null | grep -c upgradable)
     if [[ "$UPDATES" -gt 0 ]]; then
         printf "  ${YELLOW}%s package(s) have updates available${NC}\n" "$UPDATES"
     else
         printf "  ${GREEN}System is up to date${NC}\n"
     fi
 elif command -v dnf &>/dev/null; then
-    UPDATES=$(dnf check-update --quiet 2>/dev/null | grep -c '^[a-zA-Z]' || echo 0)
+    UPDATES=$(dnf check-update --quiet 2>/dev/null | grep -c '^[a-zA-Z]')
     if [[ "$UPDATES" -gt 0 ]]; then
         printf "  ${YELLOW}%s package(s) have updates available${NC}\n" "$UPDATES"
     else

@@ -4,16 +4,22 @@
 #
 # What it does:
 #   1. Generates a passphrase-protected SSH key pair for the user
-#   2. Adds the public key to authorized_keys on the server
-#   3. Configures sshd for pubkey-only auth on port 2223
-#   4. Installs UFW and blocks everything except the SSH port
-#   5. Enables automatic security updates (unattended-upgrades)
-#   6. Installs and configures fail2ban for SSH brute-force protection
-#   7. Applies kernel/network hardening via sysctl
-#   8. Hardens shared memory (noexec,nosuid,nodev)
-#   9. Installs rkhunter with daily scan cron job
-#  10. Installs AIDE file integrity monitoring with daily cron job
-#  11. Sets up a dynamic MOTD showing security status on login
+#   2. Creates a local SSH Certificate Authority (CA)
+#   3. Signs a user certificate (valid 52 weeks)
+#   4. Signs a host certificate for the server
+#   5. Configures sshd for pubkey-only auth on port 2223
+#   6. Installs UFW and blocks everything except the SSH port
+#   7. Enables automatic security updates (unattended-upgrades)
+#   8. Installs and configures fail2ban for SSH brute-force protection
+#   9. Applies kernel/network hardening via sysctl
+#  10. Hardens shared memory (noexec,nosuid,nodev)
+#  11. Installs auditd with CIS-style rules + persistent journald
+#  12. Hardens accounts (root locked, pwquality, faillock, umask, su)
+#  13. Disables legacy services and hardens /tmp (tmpfs noexec)
+#  14. Installs rkhunter with daily scan cron job
+#  15. Installs AIDE file integrity monitoring with daily cron job
+#  16. Sets up a dynamic MOTD showing security status on login
+#  17. Prints summary and runs verify.sh compliance audit
 #
 # Usage:
 #   sudo bash harden.sh [username]
@@ -115,13 +121,23 @@ parse_args() {
         case "$1" in
             --dry-run)   DRY_RUN=1 ;;
             --cert-only) CERT_ONLY=1 ;;
-            --user)      shift; TARGET_USER_ARG="${1:-}" ;;
+            --user)
+                shift
+                [[ $# -gt 0 ]] || { log_err "--user requires a value"; exit 1; }
+                TARGET_USER_ARG="$1"
+                ;;
             --user=*)    TARGET_USER_ARG="${1#--user=}" ;;
             -h|--help)
                 echo "Usage: sudo bash harden.sh [--user name] [--dry-run] [--cert-only]"
                 exit 0
                 ;;
-            *)           positional+=("$1") ;;
+            *)
+                if [[ "$1" == -* ]]; then
+                    log_err "Unknown option: $1"
+                    exit 1
+                fi
+                positional+=("$1")
+                ;;
         esac
         shift
     done
@@ -134,19 +150,23 @@ parse_args() {
 print_summary() {
     echo ""
     echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║              HARDENING COMPLETE                             ║${NC}"
+    echo -e "${GREEN}║                      HARDENING COMPLETE                      ║${NC}"
     echo -e "${GREEN}╠══════════════════════════════════════════════════════════════╣${NC}"
-    echo -e "${GREEN}║${NC}  SSH port        : ${CYAN}${SSH_PORT}${NC}                                     ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  SSH port        : ${CYAN}${SSH_PORT}${NC}                                      ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}  Auth method     : ${CYAN}Pubkey + passphrase${NC}                       ${GREEN}║${NC}"
     echo -e "${GREEN}║${NC}  Private key     : ${CYAN}~/.ssh/hardened${NC}                           ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  Firewall        : ${CYAN}UFW active (deny all, allow ${SSH_PORT}/tcp)${NC} ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  Auto-updates    : ${CYAN}Enabled (security only)${NC}                  ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  fail2ban        : ${CYAN}Active (SSH jail, 3 strikes)${NC}             ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  Sysctl          : ${CYAN}Kernel/network hardened${NC}                  ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  Shared memory   : ${CYAN}noexec,nosuid,nodev${NC}                     ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  rkhunter        : ${CYAN}Installed (daily cron scan)${NC}              ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  AIDE            : ${CYAN}File integrity monitoring (daily)${NC}        ${GREEN}║${NC}"
-    echo -e "${GREEN}║${NC}  Login MOTD      : ${CYAN}Dynamic security dashboard${NC}              ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  SSH certs       : ${CYAN}CA + signed user cert (52w)${NC}               ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Firewall        : ${CYAN}UFW active (deny all, allow ${SSH_PORT}/tcp)${NC}     ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Auto-updates    : ${CYAN}Enabled (security only)${NC}                   ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  fail2ban        : ${CYAN}Active (SSH jail, 3 strikes)${NC}              ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Sysctl          : ${CYAN}Kernel/network hardened${NC}                   ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Shared memory   : ${CYAN}noexec,nosuid,nodev${NC}                       ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  auditd          : ${CYAN}CIS rules + persistent journald${NC}           ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Accounts        : ${CYAN}root locked, pwquality, faillock${NC}          ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Legacy + /tmp   : ${CYAN}disabled, /tmp noexec,nodev${NC}               ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  rkhunter        : ${CYAN}Installed (daily cron scan)${NC}               ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  AIDE            : ${CYAN}File integrity monitoring (daily)${NC}         ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}  Login MOTD      : ${CYAN}Dynamic security dashboard${NC}                ${GREEN}║${NC}"
     echo -e "${GREEN}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${YELLOW}IMPORTANT — before closing this session:${NC}"
