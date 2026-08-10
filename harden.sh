@@ -228,6 +228,14 @@ main() {
     configure_motd
     echo ""
     print_summary
+
+    echo ""
+    log_info "──── Running compliance self-audit ────"
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log_info "[DRY] would run ${SCRIPT_DIR}/verify.sh"
+    else
+        "${SCRIPT_DIR}/verify.sh" || log_warn "verify.sh reported failures — review above."
+    fi
 }
 
 main "$@"
